@@ -7,7 +7,7 @@ Event Driven.
 ## Compile
 
 ```bash
-gcc -o cursor-scaler cursor-scaler.c -lX11 -lXcursor -lXrender -lXfixes -lXi -lm -O3
+gcc -o cursor-scaler cursor_scaler.c -lX11 -lXcursor -lXrender -lXfixes -lXi -lm -O3
 ./cursor-scaler
 ```
 
