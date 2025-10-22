@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdbool.h>
+#include <signal.h>
 
 #define MIN_SCALE 1.0
 #define MAX_SCALE 30.0
@@ -44,13 +45,28 @@ typedef struct {
     Colormap colormap;
     bool needs_update;
     bool is_shaking;
+    bool cursor_hidden;
     int xi_opcode;
 } CursorScaler;
+
+CursorScaler *global_scaler = NULL;
 
 double get_time() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + (ts.tv_nsec / 1000000000.0);
+}
+
+void cleanup_and_exit(int signum) {
+    if (global_scaler && global_scaler->display) {
+        if (global_scaler->cursor_hidden) {
+            XUndefineCursor(global_scaler->display, DefaultRootWindow(global_scaler->display));
+            XFixesShowCursor(global_scaler->display, DefaultRootWindow(global_scaler->display));
+        }
+        XFlush(global_scaler->display);
+        XCloseDisplay(global_scaler->display);
+    }
+    exit(0);
 }
 
 char* get_movement_direction(Point delta) {
@@ -107,11 +123,28 @@ void create_cursor_picture(CursorScaler *scaler) {
     XRenderSetPictureFilter(scaler->display, scaler->cursor_picture, "best", NULL, 0);
 }
 
+void hide_system_cursor(CursorScaler *scaler) {
+    if (!scaler->cursor_hidden) {
+        XFixesHideCursor(scaler->display, DefaultRootWindow(scaler->display));
+        scaler->cursor_hidden = true;
+    }
+}
+
+void show_system_cursor(CursorScaler *scaler) {
+    if (scaler->cursor_hidden) {
+        XFixesShowCursor(scaler->display, DefaultRootWindow(scaler->display));
+        scaler->cursor_hidden = false;
+    }
+}
+
 void render_cursor(CursorScaler *scaler, int x, int y) {
     if (scaler->current_scale <= MIN_SCALE) {
         XUnmapWindow(scaler->display, scaler->window);
+        show_system_cursor(scaler);
         return;
     }
+
+    hide_system_cursor(scaler);
 
     int scaled_size = (int)(scaler->cursor_image->width * scaler->current_scale);
     int offset_x = x - (scaled_size * scaler->cursor_image->xhot / scaler->cursor_image->width);
@@ -171,7 +204,6 @@ void handle_motion(CursorScaler *scaler, double x, double y) {
             scaler->current_scale = MIN_SCALE + 1.0;
         }
     } else {
-
         scaler->target_scale = MIN_SCALE;
     }
 
@@ -210,6 +242,11 @@ void update_scale(CursorScaler *scaler) {
 
 int main() {
     CursorScaler scaler = {0};
+    global_scaler = &scaler;
+    
+    signal(SIGINT, cleanup_and_exit);
+    signal(SIGTERM, cleanup_and_exit);
+    signal(SIGHUP, cleanup_and_exit);
     
     scaler.display = XOpenDisplay(NULL);
     if (!scaler.display) {
@@ -268,10 +305,9 @@ int main() {
     load_system_cursor(&scaler);
     create_cursor_picture(&scaler);
     
-    XDefineCursor(scaler.display, DefaultRootWindow(scaler.display), scaler.invisible_cursor);
-    
     scaler.current_scale = MIN_SCALE;
     scaler.target_scale = MIN_SCALE;
+    scaler.cursor_hidden = false;
     double start_time = get_time();
     scaler.last_change_time = start_time;
     
@@ -319,7 +355,6 @@ int main() {
         int ret = pselect(x11_fd + 1, &fds, NULL, NULL, &timeout, NULL);
         
         if (ret > 0) {
-
             while (XPending(scaler.display)) {
                 XNextEvent(scaler.display, &ev);
                 
@@ -329,8 +364,6 @@ int main() {
                     XGetEventData(scaler.display, cookie)) {
                     
                     if (cookie->evtype == XI_RawMotion) {
-                        XIRawEvent *raw = (XIRawEvent*)cookie->data;
-                        
                         XQueryPointer(scaler.display, root, &root_return, &child_return,
                                     &root_x, &root_y, &win_x, &win_y, &mask_return);
                         
