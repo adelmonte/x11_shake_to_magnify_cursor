@@ -1,9 +1,23 @@
-I recommend using the new C version. This should work on ANY Xorg desktop with zero configuration.
+# Cursor Scaler
 
-To build #
-gcc -o cursor_scaler cursor_scaler.c -lX11 -lXcursor -lXrender -lXfixes -lm
+Cursor find utility like on Plamsa and MacOS for X11 
 
-The Python script Depends on ```xcur2png``` and is far more resource intenstive.
+Event Driven.
 
-Be sure to change directory to your cursor in the python script.
-```cursor_path = "/usr/share/icons/Simp1e-Dark/cursors/left_ptr"```
+## Compile
+
+```bash
+gcc -o cursor-scaler cursor-scaler.c -lX11 -lXcursor -lXrender -lXfixes -lXi -lm -O3
+./cursor-scaler
+```
+
+## Requirements
+
+- X11
+- Compositor (picom)
+
+## Usage
+
+Shake mouse fast = big cursor. Stop shaking = normal cursor.
+
+```
